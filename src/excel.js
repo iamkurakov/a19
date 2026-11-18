@@ -15,7 +15,8 @@
   const number = (x) => {
     if (x instanceof ExcelError) throw x;
     if (Array.isArray(x)) return number(x[0]);
-    if (x === null || x === undefined || x === '' || x === false) return 0;
+    if (x === '') throw error('#VALUE!', 'Text empty string in arithmetic');
+    if (x === null || x === undefined || x === false) return 0;
     if (x === true) return 1;
     if (typeof x === 'number') return x;
     const v=Number(String(x).replace(/\s/g,'').replace(',','.'));
@@ -132,6 +133,25 @@
     clear(){this.cache.clear();this.details.clear();this.active.clear();}
     edit(sheet,cell,value){if(!this.data.sheets[sheet])throw new Error('Unknown sheet');const key=sheet+'!'+cell.toUpperCase().replace(/\$/g,'');this.overrides[key]=value;this.clear();}
     restore(sheet,cell){delete this.overrides[sheet+'!'+cell.toUpperCase()];this.clear();}
+    // Missing external prices are entered explicitly by a manager. Never invent or silently zero-fill them.
+    setExternal(book,sheet,cell,value){
+      if(!/^\d+$/.test(String(book))||!refParts(cell)||typeof sheet!=='string'||!sheet)throw new Error('Invalid external reference');
+      const k=String(cell).toUpperCase().replace(/\$/g,'');
+      const books=this.data.external||(this.data.external={});
+      const group=books[String(book)]||(books[String(book)]={});
+      const cells=group[sheet]||(group[sheet]={});
+      cells[k]={v:value,manuallyConfirmed:true};this.clear();
+    }
+    getExternal(book,sheet,cell){return this.data.external?.[String(book)]?.[sheet]?.[String(cell).toUpperCase()]?.v;}
+    detailedAudit(){
+      const summary=this.audit(),list=[];
+      for(const [sheet,cells] of Object.entries(this.data.sheets))for(const [cell,entry] of Object.entries(cells)){
+        if(!entry.f)continue;
+        const value=this.get(sheet,cell);
+        if(value instanceof ExcelError)list.push({sheet,cell,code:value.code,details:value.details||'',formula:entry.f,originalError:!!entry.error,originalCode:entry.error?entry.cache:null});
+      }
+      return {summary,errors:list};
+    }
     get(sheet,cell){const key=String(cell).replace(/\$/g,'').toUpperCase();const id=sheet+'!'+key;
       if(Object.prototype.hasOwnProperty.call(this.overrides,id))return this.overrides[id];
       if(this.cache.has(id))return this.cache.get(id);
@@ -220,7 +240,7 @@
       if(name==='SUM'||name==='SUBTOTAL'){
         const skip=name==='SUBTOTAL'?1:0;
         if(skip&&![9,109].includes(number(get(0))))throw error('#VALUE!','Unsupported SUBTOTAL function code');
-        let sum=0;for(let i=skip;i<args.length;i++)for(const x of flat(get(i)))if(typeof x==='number'&&Number.isFinite(x))sum+=x;
+        let sum=0;for(let i=skip;i<args.length;i++)for(const x of flat(get(i)))if(x instanceof ExcelError)throw x;else if(typeof x==='number'&&Number.isFinite(x))sum+=x;
         return sum;
       }
       if(name==='ROUNDUP'){

@@ -28,3 +28,26 @@ test('structured table current row, body totals and total row translate to cell 
  assert.equal(normalizeTables('Table5[[#Totals],[Итого, руб.]]',d,'Объём1','A6'),"'Объём1'!B8");
  assert.equal(normalizeTables('Table5[Итого, руб.]',d,'Объём1','A6'),"'Объём1'!B4:B7");
 });
+test('SUM and SUBTOTAL propagate cell errors instead of silently ignoring them',()=>{
+ const d=sample();d.sheets['Объём1'].A4={f:'1/0'};d.sheets['Объём1'].B4={f:'SUM(A1:A4)'};
+ d.sheets['Объём1'].B5={f:'SUBTOTAL(109,A1:A4)'};
+ const m=new Model(d);
+ assert.equal(m.get('Объём1','B4').code,'#DIV/0!');
+ assert.equal(m.get('Объём1','B5').code,'#DIV/0!');
+});
+test('empty string from IF fails numeric arithmetic, while an empty cell remains zero',()=>{
+ const d=sample();d.sheets['Объём1'].D1={f:'IF(1=1,"",5)+2'};
+ d.sheets['Объём1'].D2={f:'K9+2'};
+ const m=new Model(d);
+ assert.equal(m.get('Объём1','D1').code,'#VALUE!');
+ assert.equal(m.get('Объём1','D2'),2);
+});
+test('missing external source remains explicit until a manager confirms source data',()=>{
+ const d=sample();d.externalNames={'3':{worker6:"='Стоимость трудочасов'!$A$49"}};
+ d.sheets['Объём1'].D1={f:'[3]!worker6'};
+ const m=new Model(d);
+ assert.equal(m.get('Объём1','D1').code,'#N/A');
+ m.setExternal('3','Стоимость трудочасов','A49','Указан в справочнике');
+ assert.equal(m.get('Объём1','D1'),'Указан в справочнике');
+ assert.equal(m.serialize().external['3']['Стоимость трудочасов'].A49.manuallyConfirmed,true);
+});

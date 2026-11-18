@@ -15,10 +15,11 @@
       <div class="brand"><img src="assets/logo.svg" alt="А19" /><span>РАСЧЁТ КОНСТРУКЦИЙ</span></div>
       <div class="sidebar-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
       <nav>
-        <button class="nav-item active" data-view="excel"><span class="nav-index">01</span> Калькулятор Excel</button>
-        <button class="nav-item" data-view="orders"><span class="nav-index">02</span> Заказы / черновики</button>
-        <button class="nav-item" data-view="catalog"><span class="nav-index">03</span> Справочник</button>
-        <button class="nav-item" data-view="about"><span class="nav-index">04</span> О системе</button>
+        <button class="nav-item active" data-view="excel"><span class="nav-index">01</span> Расчёт конструкции</button>
+        <button class="nav-item" data-view="orders"><span class="nav-index">02</span> Заказы</button>
+        <button class="nav-item" data-view="catalog"><span class="nav-index">03</span> Материалы и прайс</button>
+        <button class="nav-item" data-view="diagnostics"><span class="nav-index">04</span> Диагностика</button>
+        <button class="nav-item" data-view="about"><span class="nav-index">05</span> О системе</button>
       </nav>
       <div class="sidebar-bottom"><span class="dot"></span> 1 МЕНЕДЖЕР / ЛОКАЛЬНЫЕ ДАННЫЕ</div>
     </aside>
@@ -27,9 +28,9 @@
         <span class="eyebrow">A19 / PRODUCTION WORKSPACE</span>
         <div class="top-actions"><button class="text-btn" data-action="export">Скачать резервную копию</button><button class="text-btn" data-action="import">Загрузить данные</button></div>
       </header>
-      <div class="warning"><strong>Локальное рабочее место.</strong> Расчёты из исходного Excel доступны после импорта приватной модели. Данные пока сохраняются только в этом браузере, без закрытого облачного репозитория. В разделе «Заказы / черновики» действует прежний упрощённый расчёт.</div>
+      <div class="warning"><strong>Один менеджер · без входа.</strong> Рабочие расчёты и заказы сохраняются локально. Сохраняйте полную резервную копию перед закрытием проекта или сменой устройства. До устранения ошибок исходного Excel КП доступны как предварительные, без утверждения цены.</div>
       <main id="app" tabindex="-1"></main>
-      <footer class="footer"><span>А19 · Расчёт рекламных конструкций</span><span>Версия 0.2 / Excel-модель</span></footer>
+      <footer class="footer"><span>А19 · Расчёт рекламных конструкций</span><span>Версия 0.3 / Аудит и заказы</span></footer>
     </div>
   </div>
   <input id="excel-model-input" type="file" accept="application/json,.json" hidden />
