@@ -1,0 +1,13 @@
+# Do not publish sensitive production data, secrets, or local environment files
+.env
+.env.*
+*.secret
+*.bak
+*.sqlite
+*.db
+node_modules/
+*.log
+__pycache__/
+.DS_Store
+*.xlsx
+backup-*.json
