@@ -36,6 +36,29 @@
   async function start(){try{const d=await store('read');if(d?.format==='a19-excel-model-v1')model=new EX.Model(d);const session=await store('read',null,'session');if(model&&session?.activeOrderId)openOrderId(session.activeOrderId);}catch(e){persistError='Не удалось получить доступ к IndexedDB: '+e.message;}loading=false;renderInto();}
   async function save(){try{await store('write',model.serialize());if(activeOrderId&&window.A19OrderBridge)window.A19OrderBridge.updateExcel(activeOrderId,model.overrides,snapshot());persistError='';}catch(e){persistError='Изменения не удалось сохранить: '+e.message;renderInto();}}
   const workspaceData=()=>model?model.serialize():null;
+  async function ensurePrivateModel(data){
+    if(model)return false;
+    if(!data||data.format!=='a19-excel-model-v1'||!data.sheets?.['Объём1'])throw new Error('Некорректная облачная модель Excel');
+    model=new EX.Model(data);
+    if(pendingOrderId)openOrderId(pendingOrderId);
+    await save();loading=false;renderInto();return true;
+  }
+  function confirmedExternal(){
+    if(!model)return [];
+    const result=[];
+    for(const [book,sheets] of Object.entries(model.data.external||{}))for(const [sheet,cells] of Object.entries(sheets||{}))for(const [cell,x] of Object.entries(cells||{}))if(x?.manuallyConfirmed===true)result.push({book,sheet,cell,value:x.v});
+    return result;
+  }
+  async function applyConfirmedExternal(values){
+    if(!model||!Array.isArray(values))return;
+    let modified=false;
+    for(const item of values){
+      if(!item||!/^\d+$/.test(String(item.book))||!/^[A-Z]+\d+$/.test(item.cell)||typeof item.sheet!=='string')continue;
+      if(model.data.external?.[item.book]?.[item.sheet]?.[item.cell]?.manuallyConfirmed)continue;
+      model.setExternal(item.book,item.sheet,item.cell,item.value);modified=true;
+    }
+    if(modified){await save();renderInto();}
+  }
   async function restoreWorkspace(data){
     if(data!==null && (data.format!=='a19-excel-model-v1'||!data.sheets?.['Объём1']))throw new Error('Неверная модель Excel');
     if(data){const next=new EX.Model(data);await store('write',next.serialize());model=next;}
@@ -111,7 +134,7 @@
     }).join('');
     return `<div class="page-heading"><div><div class="mini-label">А19 / КОНТРОЛЬ РАСЧЁТА</div><h1>Диагностика формул</h1><p>Показаны все ошибки из импортированной Excel-модели. Проверка не заменяет согласование себестоимости.</p></div><button class="secondary" data-excel-action="export-diagnostic">Скачать список ошибок</button></div>
     <div class="diag-counts">${counts}</div><div class="warning diag-warning"><strong>${report.summary.error} проблемных формул.</strong> ${original.length} — из исходной книги, ${missing.length} — без внешних данных. Незаполненные листы 2–4 порождают часть взаимосвязанных ошибок.</div>
-    <section class="card"><div class="section-title"><h2>Недостающие исходные данные</h2><small>${ext.size} уникальных ячеек внешней книги</small></div><p class="excel-footnote">Подставлять нули вместо неизвестных ставок нельзя. Поля ниже позволяют внести подтверждённые значения из исходного прайса. Они сохраняются только в браузере и включаются в полную резервную копию.</p>${inputs||'<p>Все доступные значения внешних ссылок заполнены.</p>'}</section>
+    <section class="card"><div class="section-title"><h2>Недостающие исходные данные</h2><small>${ext.size} уникальных ячеек внешней книги</small></div><p class="excel-footnote">Подставлять нули вместо неизвестных ставок нельзя. Поля ниже позволяют внести подтверждённые значения из исходного прайса. Они сохраняются в браузере и автоматически отправляются в приватный справочник при подключённом облаке.</p>${inputs||'<p>Все доступные значения внешних ссылок заполнены.</p>'}</section>
     <section class="card"><div class="section-title"><h2>Список ошибок</h2><small>${all.length} формул</small></div><div class="excel-table-wrap"><table class="excel-table diag-table"><thead><tr><th>Лист и ячейка</th><th>Код</th><th>Источник</th><th>Причина</th><th></th></tr></thead><tbody>${items}</tbody></table></div></section>`;
   }
   function diagnosticDownload(){
@@ -130,10 +153,10 @@
   function page(){
     if(loading)return `<div class="page-heading"><h1>Загрузка расчётной модели</h1></div>`;
     if(!model)return `<div class="page-heading"><div><div class="mini-label">А19 / ПРОИЗВОДСТВЕННЫЙ РАСЧЁТ</div><h1>Калькулятор Excel</h1><p>Исходные формулы и прайс загружаются только в этот браузер.</p></div></div>
-    <section class="card excel-hero"><div class="mini-label">ЛОКАЛЬНОЕ РАБОЧЕЕ МЕСТО · 1 МЕНЕДЖЕР</div><h2>Полная модель исходной книги</h2><p>16 листов, 4 115 формул, связанные цены материалов и производственные операции. Для работы загрузите приватный файл <code>A19_excel_model_PRIVATE.json</code>. Он не размещается в публичном GitHub и не передаётся на сервер.</p><button class="primary" data-excel-action="import">Загрузить расчётную модель</button><p class="excel-footnote">Данные хранятся на этом устройстве. Резервную копию следует сохранять отдельно. При смене устройства файл импортируется повторно.</p></section>${persistError?`<p class="excel-error">${esc(persistError)}</p>`:''}`;
+    <section class="card excel-hero"><div class="mini-label">ОДИН МЕНЕДЖЕР · ПРИВАТНОЕ ХРАНИЛИЩЕ А19</div><h2>Подключение рабочего калькулятора</h2><p>Модель уже находится в закрытом репозитории <code>iamkurakov/a19_data</code>. При первом подключении GitHub система сама загружает цены и все 4 115 формул. Повторно скачивать Excel или JSON не нужно.</p><div class="cloud-entry-buttons"><button class="primary" data-cloud-action="open">Подключить приватную базу</button><button class="secondary" data-excel-action="import">Загрузить JSON вручную</button></div><p class="excel-footnote">Для облачного подключения используется отдельный токен GitHub с доступом только к <code>a19_data</code>. Вход в А19 не требуется. Без подключения данные доступны только на этом устройстве.</p></section><section class="card excel-how"><h2>Как сейчас работает А19</h2><p>После подключения вводите размеры конструкции, выбираете материалы и работы, при необходимости меняете цифры вручную. Система пересчитывает результат, а сохранённые заказы отправляет в закрытый репозиторий. Это тестовый расчёт: окончательная цена требует проверки ошибок исходного Excel.</p><h3>Что ещё уточняем в формулах</h3><p>54 ошибки пришли из самой книги (в основном незаполненные блоки 2–4), ещё 36 связаны с отсутствующими ставками внешнего справочника. Нули вместо неизвестных цен не подставляем.</p></section>${persistError?`<p class="excel-error">${esc(persistError)}</p>`:''}`;
     if(activeSheet==='@diag')return diagnosticView();
     const orders=window.A19OrderBridge?.excelOrders()||[];
-    const orderActions=`<section class="card excel-section"><div class="section-title"><h2>Расчёты менеджера</h2><small>${orders.length} сохранено в этом браузере</small></div><div class="excel-order-bar"><select id="excel-order-select"><option value="">Текущий черновик без заказа</option>${orders.map(o=>`<option value="${esc(o.id)}" ${activeOrderId===o.id?'selected':''}>№ ${o.number} · ${esc(o.customer||'Без имени')} · ${esc(rub(o.estimate))} · тестовый</option>`).join('')}</select><button class="secondary" data-excel-action="new">Новый расчёт</button><button class="primary" data-excel-action="save-order">${activeOrderId?'Сохранить изменения':'Сохранить тестовый расчёт'}</button></div></section>`;
+    const orderActions=`<section class="card excel-section"><div class="section-title"><h2>Расчёты менеджера</h2><small>${orders.length} заказов · автоматическая отправка при подключённом облаке</small></div><div class="excel-order-bar"><select id="excel-order-select"><option value="">Текущий черновик без заказа</option>${orders.map(o=>`<option value="${esc(o.id)}" ${activeOrderId===o.id?'selected':''}>№ ${o.number} · ${esc(o.customer||'Без имени')} · ${esc(rub(o.estimate))} · тестовый</option>`).join('')}</select><button class="secondary" data-excel-action="new">Новый расчёт</button><button class="primary" data-excel-action="save-order">${activeOrderId?'Сохранить изменения':'Сохранить тестовый расчёт'}</button></div></section>`;
     const report=model.detailedAudit(),audit=report.summary;const manualCount=Object.keys(model.overrides).length;const names=model.data.sheetOrder||Object.keys(model.data.sheets);
     const sourceCount=report.errors.filter(e=>e.originalError).length;
     const externalCount=report.errors.length-sourceCount;
@@ -145,6 +168,7 @@
     const core=config?(tab==='materials'?lineTable(activeSheet,'materials'):tab==='services'?lineTable(activeSheet,'services'):genericTable(activeSheet)):genericTable(activeSheet);
     return `<div class="page-heading"><div><div class="mini-label">A19 / ФОРМУЛЬНАЯ МОДЕЛЬ · ЛОКАЛЬНО</div><h1>Расчёт конструкции</h1><p>Материалы, производственные операции, металлокаркас и экономика в одном рабочем пространстве.</p></div><div class="toolbar"><button class="secondary" data-excel-action="print">Распечатать тестовый расчёт</button><button class="secondary" data-excel-action="diagnostics">Ошибки расчёта</button><button class="secondary" data-excel-action="export">Резервная копия модели</button><button class="secondary" data-excel-action="import">Загрузить другую книгу</button></div></div>
     <div class="excel-audit"><strong>${audit.ok} / ${audit.formulas} формул вычислены</strong><span>${audit.error} требуют проверки · ${manualCount?manualCount+" ручных правок":audit.diff+" расхождений с исходным кэшем"}</span></div>${testAdvice}
+    <section class="card excel-how"><div class="section-title"><h2>Как пользоваться расчётом</h2><small>Краткая инструкция</small></div><p>1. Выберите тип элемента и задайте параметры. 2. Проверьте материалы и работы — стоимость меняется автоматически. 3. Любое значение можно изменить вручную. 4. Сохраните расчёт как заказ. Когда облако подключено, заказ автоматически отправляется в закрытый репозиторий.</p><p><strong>Что с ошибками:</strong> ${sourceCount} исходных ошибок Excel и ${externalCount} недостающих внешних значений. Многие ошибки относятся к пустым группам элементов 2–4. Расчёт можно тестировать, но цена и прибыль не утверждены. <button class="inline-link" data-excel-action="diagnostics">Посмотреть причины и адреса ячеек</button></p></section>
     ${persistError?`<div class="warning">${esc(persistError)}</div>`:''}
     <section class="card excel-section"><div class="section-title"><h2>Раздел расчёта</h2><small>${esc(activeSheet)}</small></div><div class="field"><label>Лист исходного Excel</label><select id="excel-sheet">${names.map(n=>`<option value="${esc(n)}" ${n===activeSheet?'selected':''}>${esc(titles[n]||n)}</option>`).join('')}</select></div></section>
     ${orderActions}
@@ -169,7 +193,7 @@
       const isNumber=/^[BJ]/.test(cell);let value=raw;
       if(isNumber){value=Number(raw.replace(',','.'));if(!Number.isFinite(value)||value<0){alert('Для цены или ставки требуется неотрицательное число.');return;}}
       if(!confirm('Подтвердить значение «'+raw+'» для '+sheet+'!'+cell+'? Оно будет внесено в локальный справочник А19.'))return;
-      model.setExternal(book,sheet,cell,value);await save();renderInto();return;
+      model.setExternal(book,sheet,cell,value);await save();window.A19Cloud?.markExternal();renderInto();return;
     }
     if(act==='export'&&model){download();return;}
     if(act==='save-order'){if(activeOrderId){await save();renderInto();}else saveAsOrder();return;}
@@ -192,5 +216,5 @@
       model.edit(sheet,ref,val);await save();renderInto();
     }
   });
-  window.A19ExcelUI={render:page,renderInto,openOrderId,chooseNew,workspaceData,restoreWorkspace,onBridgeReady:()=>{if(pendingOrderId)openOrderId(pendingOrderId);},setSheet:(sheet)=>{activeSheet=sheet;tab='materials';},renderSheet:(sheet)=>{if(activeSheet!==sheet){activeSheet=sheet;tab='all';}return page();},diagnostics:()=>{activeSheet='@diag';return page();}};start();
+  window.A19ExcelUI={render:page,renderInto,openOrderId,chooseNew,workspaceData,restoreWorkspace,ensurePrivateModel,hasModel:()=>!!model,confirmedExternal,applyConfirmedExternal,ready:null,onBridgeReady:()=>{if(pendingOrderId)openOrderId(pendingOrderId);},setSheet:(sheet)=>{activeSheet=sheet;tab='materials';},renderSheet:(sheet)=>{if(activeSheet!==sheet){activeSheet=sheet;tab='all';}return page();},diagnostics:()=>{activeSheet='@diag';return page();}};window.A19ExcelUI.ready=start();
 })();

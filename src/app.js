@@ -15,7 +15,7 @@
   let view = 'excel';
   let selected = null;
   const persist = () => { try {localStorage.setItem(STORAGE, JSON.stringify(db));} catch(e){alert('Не удалось сохранить данные в браузере. Скачайте резервную копию и освободите место.');} };
-  const save = () => {persist();render();};
+  const save = () => {persist();if(selected)window.A19Cloud?.markOrder(selected);render();};
   const byId = id => db.orders.find(x=>x.id===id);
   const objById = (order,id) => order?.objects.find(x=>x.id===id);
   const itemById = id => db.catalog.find(x=>x.id===id);
@@ -103,10 +103,11 @@
   }
   function aboutView(){return `${header('О системе','Состояние разработки, подтверждения расчёта и защита данных.')}
     <section class="card about-text"><h2>А19 — независимый калькулятор</h2>
-    <p><strong>Режим:</strong> один менеджер, вход без пароля, расчёты хранятся в текущем браузере. Исходные репозитории «Идеал Потолок» система не читает и не меняет.</p>
+    <p><strong>Режим:</strong> один менеджер, вход в А19 без пароля. При подключении GitHub заказы синхронизируются с закрытым репозиторием. Локальная копия остаётся в браузере. Исходные репозитории «Идеал Потолок» система не читает и не меняет.</p>
+    <p><strong>Ошибки:</strong> 54 проблемы содержатся в исходной книге и 36 возникают из-за отсутствующих внешних ставок. Ошибки незаполненных групп не нужно принимать за цену ноль. Подробнее — раздел «Диагностика».</p>
     <p><strong>Калькулятор Excel:</strong> 16 листов и 4 115 формул исходной книги. Отдельный движок пересчитывает связанные ячейки, поддерживает ручные значения, возврат к формуле, импорт приватного JSON и сохранение расчётов в реестр заказов браузера.</p>
     <p><strong>Проверка:</strong> 4 025 формул вычисляются без ошибки на сохранённых исходных данных; 54 исходные формулы уже имеют ошибки Excel, и ещё 36 формул требуют данных внешних справочников. Для корректных числовых результатов исходного примера расхождений не обнаружено; поведение во всех новых производственных сценариях ещё не подтверждено.</p>
-    <p><strong>Ограничения:</strong> закрытый репозиторий данных пока не создан, облачной синхронизации нет, документы Excel и прежние упрощённые черновики заказов ещё не связаны с новым движком. Для коммерческого использования требуется контрольная сверка расчётов.</p>
+    <p><strong>Ограничения:</strong> закрытый репозиторий создан, но облачное подключение требует одноразовой настройки токена на рабочем устройстве. Документы Excel и прежние упрощённые черновики заказов ещё не связаны с новым движком. Для коммерческого использования требуется контрольная сверка расчётов.</p>
     <p>Логотип предоставлен заказчиком. Точное соответствие кнопок и дизайна <a href="https://a19.group/" rel="noopener noreferrer" target="_blank">a19.group</a> не подтверждено, поскольку сайт не удалось получить через доступные источники.</p></section>`;}
   function render(){
     document.querySelectorAll('[data-view].nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===view));
@@ -156,7 +157,7 @@
         if(!confirm('Восстановление заменит текущие локальные заказы и расчётную модель. Предварительно сохраните резервную копию. Продолжить?'))return;
         (async()=>{
           if(full&&next.model)await window.A19ExcelUI.restoreWorkspace(next.model);
-          db=clone(incoming);selected=null;view='orders';save();
+          db=clone(incoming);selected=null;view='orders';save();db.orders.forEach(o=>window.A19Cloud?.markOrder(o.id));
         })().catch(err=>alert('Восстановление не выполнено: '+err.message));
       }).catch(()=>alert('Не удалось прочитать файл')).finally(()=>{e.target.value='';});
       return;
@@ -176,7 +177,7 @@
     else if(act==='add-line'&&o){const itemId=document.getElementById('pick-'+b.dataset.object)?.value;if(!itemById(itemId))return;const obj=objById(o,b.dataset.object);obj.lines.push({itemId,qty:1,qtyOverride:null,costOverride:null,priceOverride:null});save();}
     else if(act==='delete-line'&&o){const obj=objById(o,b.dataset.object);obj.lines.splice(Number(b.dataset.line),1);save();}
     else if(act==='copy-order'&&o){const next=clone(o);next.id=uid();next.number=Math.max(0,...db.orders.map(x=>Number(x.number)||0))+1;next.status='draft';next.created=new Date().toISOString();next.updated=next.created;next.objects.forEach(x=>{x.id=uid();x.lines.forEach(y=>delete y.fix);});db.orders.push(next);selected=next.id;save();}
-    else if(act==='delete-order'&&o){if(confirm(`Удалить расчёт № ${o.number}?`)){db.orders=db.orders.filter(x=>x.id!==o.id);selected=null;save();}}
+    else if(act==='delete-order'&&o){if(confirm(`Удалить расчёт № ${o.number}?`)){db.orders=db.orders.filter(x=>x.id!==o.id);window.A19Cloud?.markDeleted(o.id);selected=null;save();}}
     else if(act==='print'&&o)printEstimate(o);
     else if(act==='add-item'){
       const name=$('#new-name').value.trim();if(name.length<2){alert('Укажите название позиции');return;}
@@ -195,17 +196,22 @@
     else if(act==='import')$('#import-input').click();
   });
   window.A19OrderBridge={
+    getAll:()=>clone(db.orders),
+    getById:id=>{const o=byId(id);return o?clone(o):null;},
+    mergeRemote:(remote,dirty=[])=>{const changed=new Map(remote.map(o=>[o.id,o]));db.orders=db.orders.map(o=>dirty.includes(o.id)?o:(changed.get(o.id)||o));for(const o of remote)if(!db.orders.some(x=>x.id===o.id))db.orders.push(o);persist();render();},
+    rerender:()=>render(),
     excelOrders:()=>db.orders.filter(o=>o.calculator==='excel').map(o=>({id:o.id,number:o.number,customer:o.customer?.name||'',updated:o.updated,total:o.excelSnapshot?.total??null,estimate:o.excelSnapshot?.estimate??o.excelSnapshot?.total??null})),
     getExcel:id=>{const o=byId(id);return o&&o.calculator==='excel'?clone(o):null;},
     newExcel:(customer,overrides,snapshot)=>{
       const o=makeOrder();o.calculator='excel';o.customer.name=String(customer||'').trim();o.excelOverrides=clone(overrides||{});o.excelSnapshot=clone(snapshot||{});
-      db.orders.push(o);persist();return o.id;
+      db.orders.push(o);persist();window.A19Cloud?.markOrder(o.id);return o.id;
     },
     updateExcel:(id,overrides,snapshot)=>{
       const o=byId(id);if(!o||o.calculator!=='excel')return false;
-      o.excelOverrides=clone(overrides||{});o.excelSnapshot=clone(snapshot||{});o.updated=new Date().toISOString();persist();return true;
+      o.excelOverrides=clone(overrides||{});o.excelSnapshot=clone(snapshot||{});o.updated=new Date().toISOString();persist();window.A19Cloud?.markOrder(o.id);return true;
     }
   };
   window.A19ExcelUI?.onBridgeReady();
+  window.addEventListener('a19-cloud-status',()=>{const state=window.A19Cloud?.state();const badge=$('#cloud-status-text');if(badge)badge.textContent=state?.connected?'Приватное облако подключено':state?.error?'Ошибка сохранения в облако':'Данные в браузере';});
   render();
 })();

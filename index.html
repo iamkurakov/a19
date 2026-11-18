@@ -21,24 +21,37 @@
         <button class="nav-item" data-view="diagnostics"><span class="nav-index">04</span> Диагностика</button>
         <button class="nav-item" data-view="about"><span class="nav-index">05</span> О системе</button>
       </nav>
-      <div class="sidebar-bottom"><span class="dot"></span> 1 МЕНЕДЖЕР / ЛОКАЛЬНЫЕ ДАННЫЕ</div>
+      <div class="sidebar-bottom"><span class="dot"></span> 1 МЕНЕДЖЕР / <span id="cloud-status-text">ДАННЫЕ В БРАУЗЕРЕ</span></div>
     </aside>
     <div class="workspace">
       <header class="topbar">
         <span class="eyebrow">A19 <i class="top-separator"></i> КАЛЬКУЛЯТОР РЕКЛАМНЫХ КОНСТРУКЦИЙ</span>
-        <div class="top-actions"><button class="text-btn" data-action="export">Скачать резервную копию</button><button class="text-btn" data-action="import">Загрузить данные</button></div>
+        <div class="top-actions"><button class="text-btn cloud-top-link" id="cloud-connect" data-cloud-action="open">Подключить облако</button><button class="text-btn" data-action="export">Скачать резервную копию</button><button class="text-btn" data-action="import">Загрузить данные</button></div>
       </header>
-      <div class="warning"><strong>Тестовый режим.</strong> Один менеджер, без входа. Данные пока сохраняются только в этом браузере. До сверки формул все цены предварительные. Скачивайте полную резервную копию после работы.</div>
+      <div class="warning"><strong>Расчёты в режиме проверки.</strong> Один менеджер, без входа. <span data-cloud-status>Облако не подключено</span>. В исходном Excel остаются 54 ошибки и 36 недостающих внешних значений. Стоимость предварительная.</div>
       <main id="app" tabindex="-1"></main>
-      <footer class="footer"><span>А19 · Расчёт рекламных конструкций</span><span>Версия 0.4 / Проверка расчётов</span></footer>
+      <footer class="footer"><span id="a19-cloud-caption">А19 · Расчёт рекламных конструкций</span><span>Версия 0.5 / Приватные заказы</span></footer>
     </div>
   </div>
   <input id="excel-model-input" type="file" accept="application/json,.json" hidden />
   <input id="import-input" type="file" accept="application/json,.json" hidden />
+  <dialog id="cloud-dialog" class="cloud-dialog" aria-labelledby="cloud-title">
+    <div class="cloud-dialog-heading"><div><div class="mini-label">А19 / ЗАКРЫТЫЕ ДАННЫЕ</div><h2 id="cloud-title">Подключение приватного облака</h2></div><button type="button" data-cloud-action="close" class="cloud-close" aria-label="Закрыть окно">×</button></div>
+    <p>Формулы, цены и заказы хранятся в <strong>iamkurakov/a19_data</strong>. Один раз подключите GitHub — после этого модель будет загружаться сама, а заказы сохраняться автоматически.</p>
+    <form id="cloud-form">
+      <label class="cloud-label" for="cloud-token">GitHub fine-grained token</label>
+      <input id="cloud-token" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false" required />
+      <label class="cloud-remember"><input type="checkbox" id="cloud-remember" /> Запомнить токен в этом браузере (только на личном компьютере)</label>
+      <div class="cloud-actions"><button id="cloud-submit" type="submit" class="primary">Подключить и загрузить</button><button type="button" class="secondary" data-cloud-action="sync">Синхронизировать</button></div>
+    </form>
+    <p id="cloud-dialog-status" class="cloud-help">Токен нужно создать в настройках GitHub, выбрать <strong>Only select repositories → a19_data</strong>, разрешить <strong>Contents → Read and write</strong>. Никогда не вставляйте токен в публичный код или сообщения.</p>
+    <div class="cloud-dialog-bottom"><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Создать ограниченный токен GitHub</a><button type="button" class="cloud-disconnect" data-cloud-action="disconnect">Отключить устройство</button></div>
+  </dialog>
   <section id="print-sheet" aria-hidden="true"></section>
   <script src="src/engine.js"></script>
   <script src="src/excel.js"></script>
   <script src="src/excel-ui.js"></script>
   <script src="src/app.js"></script>
+  <script src="src/cloud.js"></script>
 </body>
 </html>
