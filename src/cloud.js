@@ -1,6 +1,6 @@
-/* A19 single-manager private GitHub storage.
-   No secret is built into this public file. A limited-scope token is supplied
-   by the manager on a trusted device. The public site itself is NOT an auth boundary. */
+/* A19 storage client: supports a shared backend without client credentials,
+   and an owner-only legacy GitHub token while the gateway is not deployed.
+   Never embed GitHub credentials into this public file. */
 (function(root,factory){
   const api=factory();
   if(typeof module==='object'&&module.exports)module.exports=api;
@@ -11,11 +11,17 @@ const DEFAULT_REPO='iamkurakov/a19_data';
 class CloudError extends Error {constructor(message,status=0){super(message);this.name='CloudError';this.status=status;}}
 function enc64(str){const bytes=new TextEncoder().encode(str);let s='';for(let i=0;i<bytes.length;i+=16384)s+=String.fromCharCode(...bytes.subarray(i,i+16384));return btoa(s);}
 function dec64(data){const s=atob(String(data||'').replace(/\s/g,''));const bytes=new Uint8Array(s.length);for(let i=0;i<s.length;i++)bytes[i]=s.charCodeAt(i);return bytes;}
-function createClient(token,fetchFn=fetch,repo=DEFAULT_REPO){
+function createClient(token,fetchFn=fetch,repo=DEFAULT_REPO,sharedEndpoint="",shareKey=""){
   if(!/^[a-zA-Z0-9-]+\/[a-zA-Z0-9_.-]+$/.test(repo))throw new CloudError('Неверный репозиторий');
   const base='https://api.github.com/repos/'+repo;
+  const gateway=sharedEndpoint?String(sharedEndpoint).replace(/\/$/,'').replace(/\/api\/github$/,'')+'/api/github':'';
+  if(gateway&&!/^https:\/\/[^/]+\/api\/github$/.test(gateway))throw new CloudError('Неверный адрес общего хранилища');
   async function request(method,path,payload){
-    const res=await fetchFn(base+path,{method,headers:{'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','Authorization':'Bearer '+token,'Content-Type':'application/json'},...(payload===undefined?{}:{body:JSON.stringify(payload)})});
+    const dest=gateway?gateway+'?path='+encodeURIComponent(path):base+path;
+    const headers={'Accept':'application/vnd.github+json','Content-Type':'application/json'};
+    if(gateway){if(shareKey)headers['X-A19-Share-Key']=shareKey;}
+    else {headers['X-GitHub-Api-Version']='2022-11-28';headers.Authorization='Bearer '+token;}
+    const res=await fetchFn(dest,{method,headers,...(payload===undefined?{}:{body:JSON.stringify(payload)})});
     if(res.status===404){if(method==='GET')return null;throw new CloudError('Репозиторий или файл не найден. Проверьте доступ токена.',404);}
     if(!res.ok){
       let reason='GitHub вернул '+res.status;
@@ -46,16 +52,17 @@ function browser(root){
   const saveMap=(key,value)=>root.localStorage.setItem(key,JSON.stringify(value));
   const pending=()=>parse(QUEUE_KEY,{}),deletions=()=>parse(DELETES_KEY,{}),shas=()=>parse(SHA_KEY,{});
   let token=root.sessionStorage.getItem(SESSION_KEY)||root.localStorage.getItem(LOCAL_KEY)||'';
+  let shared=false;
   let client=token?createClient(token,root.fetch.bind(root)):null;
   let syncing=false,debounce=null,connecting=false,lastSynced='',lastError='',connected=false,modelLoaded=false;
-  const state=()=>({connected,syncing,connecting,pending:Object.keys(pending()).length+Object.keys(deletions()).length,lastSynced,error:lastError,hasToken:!!token,modelLoaded});
-  function report(){const st=state();const label=st.connecting?'Подключение…':st.syncing?'Сохраняется…':st.connected?(st.pending?'В очереди: '+st.pending:'Облако подключено'):(st.error?'Ошибка облака':'Облако не подключено');
+  const state=()=>({connected,shared,syncing,connecting,pending:Object.keys(pending()).length+Object.keys(deletions()).length,lastSynced,error:lastError,hasToken:!!token&&!shared,modelLoaded});
+  function report(){const st=state();const label=st.connecting?'Подключение…':st.syncing?'Сохраняется…':st.connected?(st.pending?'В очереди: '+st.pending:shared?'Общая база подключена':'Облако подключено'):(st.error?'Ошибка сохранения в общую базу':shared?'Общая база подключается':'Облако не подключено');
     for(const el of root.document.querySelectorAll('[data-cloud-status]'))el.textContent=label;
-    const button=$('#cloud-connect');if(button)button.textContent=st.connected?'Настроить облако':'Подключить облако';
-    const stamp=$('#a19-cloud-caption');if(stamp)stamp.textContent=st.connected?('А19 · приватное хранилище'+(st.lastSynced?' · сохранено '+st.lastSynced:'')):'Сейчас данные находятся только в браузере';
+    const button=$('#cloud-connect');if(button)button.textContent=shared?'Обновить данные':st.connected?'Настроить облако':'Подключить облако';
+    const stamp=$('#a19-cloud-caption');if(stamp)stamp.textContent=st.connected?(shared?'А19 · единая база заказов':'А19 · приватное хранилище')+(st.lastSynced?' · сохранено '+st.lastSynced:''):'Нет связи с общей базой. Локальные изменения не потеряны';
     root.dispatchEvent(new CustomEvent('a19-cloud-status',{detail:st}));
   }
-  function schedule(){if(!token)return;clearTimeout(debounce);debounce=setTimeout(()=>{sync().catch(()=>{});},1100);report();}
+  function schedule(){if(!token&&!shared)return;clearTimeout(debounce);debounce=setTimeout(()=>{sync().catch(()=>{});},1100);report();}
   function markOrder(id){if(!id||typeof id!=='string')return;const data=pending();data[id]=Date.now();saveMap(QUEUE_KEY,data);schedule();}
   function markDeleted(id){if(!id)return;const p=pending();delete p[id];saveMap(QUEUE_KEY,p);const d=deletions();d[id]=Date.now();saveMap(DELETES_KEY,d);schedule();}
   function markExternal(){root.localStorage.setItem('a19.private.external-dirty','1');schedule();}
@@ -111,14 +118,15 @@ function browser(root){
     finally{syncing=false;report();if(connected&&(Object.keys(pending()).length||Object.keys(deletions()).length||root.localStorage.getItem('a19.private.external-dirty')==='1'))schedule();}
   }
   async function connect(value,remember){
+    if(shared)throw new CloudError('Общая база подключается без токена на компьютере');
     if(!value||!/^github_pat_|^ghp_|^ghu_/.test(value))throw new CloudError('Нужен GitHub fine-grained token с доступом только к a19_data');
     connecting=true;report();
     const next=createClient(value,root.fetch.bind(root));
     try{await next.validate();token=value;client=next;if(remember){root.localStorage.setItem(LOCAL_KEY,value);root.sessionStorage.removeItem(SESSION_KEY);}else{root.sessionStorage.setItem(SESSION_KEY,value);root.localStorage.removeItem(LOCAL_KEY);}lastError='';connecting=false;report();const ok=await sync();if(!ok)throw new CloudError(lastError);return true;}
     finally{connecting=false;report();}
   }
-  function disconnect(){token='';client=null;connected=false;lastError='';root.localStorage.removeItem(LOCAL_KEY);root.sessionStorage.removeItem(SESSION_KEY);report();}
-  function openDialog(){const d=$('#cloud-dialog');if(!d)return;const s=state();const status=$('#cloud-dialog-status');if(status)status.textContent=s.error|| (s.connected?'Соединение установлено. Заказы автоматически записываются в приватный репозиторий.':'Подключите GitHub только к закрытому a19_data.');d.showModal();}
+  function disconnect(){if(shared)return;token='';client=null;connected=false;lastError='';root.localStorage.removeItem(LOCAL_KEY);root.sessionStorage.removeItem(SESSION_KEY);report();}
+  function openDialog(){if(shared){sync().catch(()=>{});return;}const d=$('#cloud-dialog');if(!d)return;const s=state();const status=$('#cloud-dialog-status');if(status)status.textContent=s.error|| (s.connected?'Соединение установлено. Заказы автоматически записываются в приватный репозиторий.':'Подключите GitHub только к закрытому a19_data.');d.showModal();}
   root.document.addEventListener('click',async e=>{
     const target=e.target.closest('[data-cloud-action]');if(!target)return;
     const action=target.dataset.cloudAction;
@@ -133,9 +141,28 @@ function browser(root){
     catch(err){const line=$('#cloud-dialog-status');if(line)line.textContent=err.message;}
     finally{if(btn)btn.disabled=false;}
   });
-  root.addEventListener('online',()=>{if(token)sync();});
+  root.addEventListener('online',()=>{if(token||shared)sync();});
+  root.addEventListener('visibilitychange',()=>{if(!root.document.hidden&&shared)sync();});
+  root.setInterval?.(()=>{if(shared&&!root.document.hidden)sync();},60000);
   const api={state,connect,disconnect,markOrder,markDeleted,markExternal,sync,openDialog,createClient};
-  setTimeout(()=>{if(token)sync();else report();},0);
+  async function initialize(){
+    try{
+      const configResponse=await root.fetch('config/shared.json',{cache:'no-store'});
+      if(configResponse.ok){
+        const config=await configResponse.json();
+        if(config&&typeof config.api==='string'&&/^https:\/\/[^/]+$/.test(config.api.replace(/\/$/,''))){
+          shared=true;token='';
+          const params=new URLSearchParams((root.location?.hash||'').replace(/^#/,''));
+          const key=params.get('a19')||root.localStorage.getItem('a19.share.key')||'';
+          if(params.get('a19'))root.localStorage.setItem('a19.share.key',key);
+          client=createClient('',root.fetch.bind(root),DEFAULT_REPO,config.api,key);
+          report();await sync();return;
+        }
+      }
+    }catch(e){lastError='Не удалось определить адрес общей базы';}
+    if(token)await sync();else report();
+  }
+  setTimeout(()=>{initialize().catch(e=>{lastError=e.message;report();});},0);
   return api;
 }
 return {createClient,CloudError,browser};

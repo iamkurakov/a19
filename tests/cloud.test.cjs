@@ -28,3 +28,15 @@ test('write conflicts remain visible instead of overwriting other session',async
 test('write paths are restricted to A19 data, not GitHub settings or other projects',async()=>{
  await assert.rejects(createClient('github_pat_test',async()=>{}).putJSON('../ideal_potolok/settings.json',{}),/Недопустимый путь/);
 });
+
+
+test('shared client proxies all operations with no Github credential in browser',async()=>{
+ const calls=[];
+ const fetchFn=async (url,opts)=>{calls.push({url,opts});return {ok:true,status:200,json:async()=>({full_name:'iamkurakov/a19_data',private:true})};};
+ const c=createClient('',fetchFn,'iamkurakov/a19_data','https://a19-example.vercel.app','share-link-secret');
+ assert.equal(await c.validate(),true);
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].url,'https://a19-example.vercel.app/api/github?path=');
+ assert.equal(calls[0].opts.headers.Authorization,undefined);
+ assert.equal(calls[0].opts.headers['X-A19-Share-Key'],'share-link-secret');
+});

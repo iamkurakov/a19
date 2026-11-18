@@ -212,6 +212,6 @@
     }
   };
   window.A19ExcelUI?.onBridgeReady();
-  window.addEventListener('a19-cloud-status',()=>{const state=window.A19Cloud?.state();const badge=$('#cloud-status-text');if(badge)badge.textContent=state?.connected?'Приватное облако подключено':state?.error?'Ошибка сохранения в облако':'Данные в браузере';});
+  window.addEventListener('a19-cloud-status',()=>{const state=window.A19Cloud?.state();const badge=$('#cloud-status-text');if(badge)badge.textContent=state?.connected?(state?.shared?'Общая база подключена':'Приватное облако подключено'):state?.error?'Ошибка сохранения в облако':'Данные в браузере';});
   render();
 })();

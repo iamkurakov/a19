@@ -1,0 +1,4 @@
+{
+  "api": null,
+  "comment": "Set api to the deployed HTTPS gateway URL after backend hosting is connected. No credentials here."
+}
