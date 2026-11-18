@@ -32,14 +32,14 @@
   const statuses = Object.entries(statusNames);
   function header(title,sub,action='') { return `<div class="page-heading"><div><div class="mini-label">A19 / РАБОЧАЯ СИСТЕМА</div><h1>${esc(title)}</h1><p>${esc(sub)}</p></div>${action}</div>`; }
   function ordersView(){
-    const total = db.orders.reduce((s,o)=>s+E.calcOrder(o,db.catalog).total,0);
+    const total = db.orders.reduce((s,o)=>s+(o.calculator==='excel' ? (Number(o.excelSnapshot?.total)||0) : E.calcOrder(o,db.catalog).total),0);
     const active = db.orders.filter(o=>!['done','declined'].includes(o.status)).length;
     const done = db.orders.filter(o=>o.status==='done').length;
     return `${header('Заказы','Коммерческие расчёты и рекламные конструкции.',btn('＋ Новый расчёт','new-order','primary'))}
       <div class="stats"><div class="stat"><div class="mini-label">ВСЕГО РАСЧЁТОВ</div><div class="metric">${db.orders.length}</div></div><div class="stat"><div class="mini-label">В РАБОТЕ</div><div class="metric">${active}</div></div><div class="stat"><div class="mini-label">СУММА РАСЧЁТОВ / ВСЕ СТАТУСЫ</div><div class="metric">${rub(total)}</div></div></div>
       <section class="card"><div class="section-title"><h2>Реестр заказов</h2><small>Завершено: ${done}</small></div>
       ${db.orders.length ? `<div class="orders-list">${[...db.orders].reverse().map(o=>{
-        const calc=E.calcOrder(o,db.catalog);return `<button class="order-row" data-action="open-order" data-id="${esc(o.id)}"><span class="order-id">№ ${o.number}<small>${date(o.created)}</small></span><span><strong>${esc(o.customer.name||'Клиент не указан')}</strong><small>${o.objects.length} объект(ов)</small></span><span class="hide-mid dim">${esc(o.manager||'Менеджер не указан')}</span><span><span class="tag">${esc(statusNames[o.status]||o.status)}</span><small>${rub(calc.total)}</small></span><span class="muted">Открыть →</span></button>`;}).join('')}</div>` : `<div class="empty"><strong>Пока нет расчётов</strong>Создайте первый заказ и добавьте материалы или работы из справочника.</div>`}</section>`;
+        const calc=o.calculator==='excel'?{total:Number(o.excelSnapshot?.total)||0}:E.calcOrder(o,db.catalog);return `<button class="order-row" data-action="open-order" data-id="${esc(o.id)}"><span class="order-id">№ ${o.number}<small>${date(o.created)}</small></span><span><strong>${esc(o.customer.name||'Клиент не указан')}</strong><small>${o.calculator==='excel'?'Расчёт по Excel':'Объектов: '+o.objects.length}</small></span><span class="hide-mid dim">${esc(o.manager||'Менеджер не указан')}</span><span><span class="tag">${esc(statusNames[o.status]||o.status)}</span><small>${rub(calc.total)}</small></span><span class="muted">Открыть →</span></button>`;}).join('')}</div>` : `<div class="empty"><strong>Пока нет расчётов</strong>Создайте первый заказ и добавьте материалы или работы из справочника.</div>`}</section>`;
   }
   function lineRow(order,obj,line,index,calculated){
     const item=itemById(line.itemId);
@@ -101,8 +101,13 @@
       <section class="card"><div class="section-title"><h2>Позиции</h2><small>${db.catalog.length} поз.</small></div>${db.catalog.length?`<div class="table-wrap"><table class="catalog-table"><thead><tr><th>ID</th><th>Позиция</th><th>Тип</th><th>Ед.</th><th>Расход</th><th>Коэф.</th><th>Себест.</th><th>Продажа</th><th></th></tr></thead><tbody>${db.catalog.map(row).join('')}</tbody></table></div>`:'<div class="empty"><strong>Справочник пока пустой</strong>Цены из Excel не импортированы. Добавляйте только подтверждённые позиции.</div>'}
       <p class="hint">Для режима «Площадь» количество = ширина × высота в м² × коэффициент × количество объектов. Для «Периметра» — длина периметра в метрах × коэффициент. Сложные производственные нормы Excel будут подключены отдельно.</p></section>`;
   }
-  function aboutView(){return `${header('О системе','Границы первой версии и правила безопасности.')}
-      <section class="card about-text"><h2>А19 — отдельный продукт</h2><p>Этот прототип не использует код, хранилище, учётные данные и рабочие заказы «Идеал Потолок». Исходный продукт и его репозитории остаются без изменений.</p><p><strong>Уже работает:</strong> создание и копирование заказов, несколько рекламных объектов в заказе, ручное редактирование, независимый каталог, простые геометрические нормы расхода, подсчёт стоимости, скидок и прибыли, фиксация цен завершённых заказов, скачивание резервной копии и печать предварительного КП.</p><p><strong>Не готово к производству:</strong> подключение Excel-модели и внешних справочников, специализированные формулы, облачная база, права сотрудников, аудит изменений, полноценные производственные документы, проверка соответствия корпоративному сайту.</p><p>Сохранение данных сейчас работает только в браузере. Очистка браузерного хранилища приведёт к их потере, если не скачать резервную копию. Использовать для реальных заказов нельзя.</p><p>Бренд: предоставленный векторный логотип А19. Палитра и типографика сайта <a href="https://a19.group/" rel="noopener noreferrer" target="_blank">a19.group</a> требуют отдельной проверки доступного исходника сайта.</p></section>`;}
+  function aboutView(){return `${header('О системе','Состояние разработки, подтверждения расчёта и защита данных.')}
+    <section class="card about-text"><h2>А19 — независимый калькулятор</h2>
+    <p><strong>Режим:</strong> один менеджер, вход без пароля, расчёты хранятся в текущем браузере. Исходные репозитории «Идеал Потолок» система не читает и не меняет.</p>
+    <p><strong>Калькулятор Excel:</strong> 16 листов и 4 115 формул исходной книги. Отдельный движок пересчитывает связанные ячейки, поддерживает ручные значения, возврат к формуле, импорт приватного JSON и сохранение расчётов в реестр заказов браузера.</p>
+    <p><strong>Проверка:</strong> 4 067 формул исполняются без ошибки на сохранённых исходных данных, у 48 формул остаются ошибки и неразрешённые внешние зависимости. Для корректных числовых результатов исходного примера расхождений не обнаружено; поведение во всех новых производственных сценариях ещё не подтверждено.</p>
+    <p><strong>Ограничения:</strong> закрытый репозиторий данных пока не создан, облачной синхронизации нет, документы Excel и прежние упрощённые черновики заказов ещё не связаны с новым движком. Для коммерческого использования требуется контрольная сверка расчётов.</p>
+    <p>Логотип предоставлен заказчиком. Точное соответствие кнопок и дизайна <a href="https://a19.group/" rel="noopener noreferrer" target="_blank">a19.group</a> не подтверждено, поскольку сайт не удалось получить через доступные источники.</p></section>`;}
   function render(){
     document.querySelectorAll('[data-view].nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===view));
     const o=selected&&byId(selected);
@@ -158,7 +163,7 @@
     const act=b.dataset.action;
     const o=byId(selected);
     if(act==='new-order'){const newO=makeOrder();db.orders.push(newO);selected=newO.id;view='orders';save();}
-    else if(act==='open-order'){selected=b.dataset.id;view='orders';render();}
+    else if(act==='open-order'){const target=byId(b.dataset.id);if(target?.calculator==='excel'){selected=null;view='excel';window.A19ExcelUI.openOrderId(target.id);render();}else{selected=b.dataset.id;view='orders';render();}}
     else if(act==='back'){selected=null;render();}
     else if(act==='add-object'&&o){o.objects.push(makeObject(o.objects.length+1));save();}
     else if(act==='delete-object'&&o){if(o.objects.length===1){alert('В заказе должен быть хотя бы один объект.');return;}if(confirm('Удалить объект и все его позиции?')){o.objects=o.objects.filter(x=>x.id!==b.dataset.object);save();}}
@@ -179,5 +184,17 @@
     else if(act==='export'){download('a19-backup-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(db,null,2));}
     else if(act==='import')$('#import-input').click();
   });
+  window.A19OrderBridge={
+    excelOrders:()=>db.orders.filter(o=>o.calculator==='excel').map(o=>({id:o.id,number:o.number,customer:o.customer?.name||'',updated:o.updated,total:o.excelSnapshot?.total||0})),
+    getExcel:id=>{const o=byId(id);return o&&o.calculator==='excel'?clone(o):null;},
+    newExcel:(customer,overrides,snapshot)=>{
+      const o=makeOrder();o.calculator='excel';o.customer.name=String(customer||'').trim();o.excelOverrides=clone(overrides||{});o.excelSnapshot=clone(snapshot||{});
+      db.orders.push(o);persist();return o.id;
+    },
+    updateExcel:(id,overrides,snapshot)=>{
+      const o=byId(id);if(!o||o.calculator!=='excel')return false;
+      o.excelOverrides=clone(overrides||{});o.excelSnapshot=clone(snapshot||{});o.updated=new Date().toISOString();persist();return true;
+    }
+  };
   render();
 })();
