@@ -32,14 +32,14 @@
   const statuses = Object.entries(statusNames);
   function header(title,sub,action='') { return `<div class="page-heading"><div><div class="mini-label">A19 / РАБОЧАЯ СИСТЕМА</div><h1>${esc(title)}</h1><p>${esc(sub)}</p></div>${action}</div>`; }
   function ordersView(){
-    const total = db.orders.reduce((s,o)=>s+(o.calculator==='excel' ? (typeof o.excelSnapshot?.total==='number'?o.excelSnapshot.total:0) : E.calcOrder(o,db.catalog).total),0);
+    const total = db.orders.reduce((s,o)=>s+(o.calculator==='excel' ? (typeof o.excelSnapshot?.estimate==='number'?o.excelSnapshot.estimate:0) : E.calcOrder(o,db.catalog).total),0);
     const active = db.orders.filter(o=>!['done','declined'].includes(o.status)).length;
     const done = db.orders.filter(o=>o.status==='done').length;
-    return `${header('Заказы','Коммерческие расчёты и рекламные конструкции.',btn('＋ Новый расчёт','new-order','primary'))}
+    return `${header('Заказы','Черновики и проверочные расчёты. Суммы не утверждены.',btn('＋ Новый расчёт','new-order','primary'))}
       <div class="stats"><div class="stat"><div class="mini-label">ВСЕГО РАСЧЁТОВ</div><div class="metric">${db.orders.length}</div></div><div class="stat"><div class="mini-label">В РАБОТЕ</div><div class="metric">${active}</div></div><div class="stat"><div class="mini-label">СУММА РАСЧЁТОВ / ВСЕ СТАТУСЫ</div><div class="metric">${rub(total)}</div></div></div>
       <section class="card"><div class="section-title"><h2>Реестр заказов</h2><small>Завершено: ${done}</small></div>
       ${db.orders.length ? `<div class="orders-list">${[...db.orders].reverse().map(o=>{
-        const calc=o.calculator==='excel'?{total:Number(o.excelSnapshot?.total)||0}:E.calcOrder(o,db.catalog);return `<button class="order-row" data-action="open-order" data-id="${esc(o.id)}"><span class="order-id">№ ${o.number}<small>${date(o.created)}</small></span><span><strong>${esc(o.customer.name||'Клиент не указан')}</strong><small>${o.calculator==='excel'?'Расчёт по производственной модели':'Архив упрощённого прототипа · объектов: '+o.objects.length}</small></span><span class="hide-mid dim">${esc(o.manager||'Менеджер не указан')}</span><span><span class="tag">${esc(statusNames[o.status]||o.status)}</span><small>${o.calculator==='excel'&&o.excelSnapshot?.total==null?'Сумма не подтверждена':rub(calc.total)}</small></span><span class="muted">Открыть →</span></button>`;}).join('')}</div>` : `<div class="empty"><strong>Пока нет заказов</strong>Начните расчёт на основе производственной Excel-модели.</div>`}</section>`;
+        const calc=o.calculator==='excel'?{total:Number(o.excelSnapshot?.estimate??o.excelSnapshot?.total)||0}:E.calcOrder(o,db.catalog);return `<button class="order-row" data-action="open-order" data-id="${esc(o.id)}"><span class="order-id">№ ${o.number}<small>${date(o.created)}</small></span><span><strong>${esc(o.customer.name||'Клиент не указан')}</strong><small>${o.calculator==='excel'?'Тестовый расчёт · требуется сверка с Excel':'Архив упрощённого прототипа · объектов: '+o.objects.length}</small></span><span class="hide-mid dim">${esc(o.manager||'Менеджер не указан')}</span><span><span class="tag">${esc(statusNames[o.status]||o.status)}</span><small>${o.calculator==='excel'&&o.calculator==='excel'?'Предварительно: '+rub(calc.total):rub(calc.total)}</small></span><span class="muted">Открыть →</span></button>`;}).join('')}</div>` : `<div class="empty"><strong>Пока нет заказов</strong>Начните расчёт на основе производственной Excel-модели.</div>`}</section>`;
   }
   function lineRow(order,obj,line,index,calculated){
     const item=itemById(line.itemId);
@@ -141,7 +141,7 @@
   function printEstimate(o){
     const c=E.calcOrder(o,db.catalog);
     if(c.incomplete){alert('Для КП необходимо заполнить состав заказа, себестоимость и цену каждой позиции.');return;}
-    $('#print-sheet').innerHTML=`<img src="assets/logo.svg" alt="А19"><h1>Коммерческое предложение № ${o.number}</h1><p>Клиент: ${esc(o.customer.name||'—')}<br>Дата: ${date(new Date().toISOString())}</p>${c.objects.map((obj,i)=>`<h2>${i+1}. ${esc(obj.title)}</h2><p>Габариты: ${esc(o.objects[i].widthMm)} × ${esc(o.objects[i].heightMm)} мм · Количество: ${obj.count}</p><table><thead><tr><th>Позиция</th><th>Кол-во</th><th>Цена</th><th class="right">Стоимость</th></tr></thead><tbody>${obj.lines.map(l=>`<tr><td>${esc(l.name)}</td><td>${num(l.total)} ${esc(l.unit)}</td><td>${rub(l.unitPrice)}</td><td class="right">${rub(l.sale)}</td></tr>`).join('')}</tbody></table>`).join('')}<div class="print-footer">ИТОГО: ${rub(c.total)}${c.discount?' (скидка '+rub(c.discount)+')':''}</div>`;
+    $('#print-sheet').innerHTML=`<img src="assets/logo.svg" alt="А19"><h1>ТЕСТОВЫЙ РАСЧЁТ № ${o.number}</h1><p>Клиент: ${esc(o.customer.name||'—')}<br>Дата: ${date(new Date().toISOString())}</p>${c.objects.map((obj,i)=>`<h2>${i+1}. ${esc(obj.title)}</h2><p>Габариты: ${esc(o.objects[i].widthMm)} × ${esc(o.objects[i].heightMm)} мм · Количество: ${obj.count}</p><table><thead><tr><th>Позиция</th><th>Кол-во</th><th>Цена</th><th class="right">Стоимость</th></tr></thead><tbody>${obj.lines.map(l=>`<tr><td>${esc(l.name)}</td><td>${num(l.total)} ${esc(l.unit)}</td><td>${rub(l.unitPrice)}</td><td class="right">${rub(l.sale)}</td></tr>`).join('')}</tbody></table>`).join('')}<div class="print-footer">ИТОГО: ${rub(c.total)}${c.discount?' (скидка '+rub(c.discount)+')':''}</div>`;
     window.print();
   }
   document.addEventListener('change',e=>{
@@ -195,7 +195,7 @@
     else if(act==='import')$('#import-input').click();
   });
   window.A19OrderBridge={
-    excelOrders:()=>db.orders.filter(o=>o.calculator==='excel').map(o=>({id:o.id,number:o.number,customer:o.customer?.name||'',updated:o.updated,total:o.excelSnapshot?.total||0})),
+    excelOrders:()=>db.orders.filter(o=>o.calculator==='excel').map(o=>({id:o.id,number:o.number,customer:o.customer?.name||'',updated:o.updated,total:o.excelSnapshot?.total??null,estimate:o.excelSnapshot?.estimate??o.excelSnapshot?.total??null})),
     getExcel:id=>{const o=byId(id);return o&&o.calculator==='excel'?clone(o):null;},
     newExcel:(customer,overrides,snapshot)=>{
       const o=makeOrder();o.calculator='excel';o.customer.name=String(customer||'').trim();o.excelOverrides=clone(overrides||{});o.excelSnapshot=clone(snapshot||{});

@@ -43,7 +43,7 @@
     persistError='';activeSheet='Объём1';tab='materials';renderInto();
   }
   const modelFile=async file=>{const raw=await file.text();const data=JSON.parse(raw);if(data.format!=='a19-excel-model-v1'||!data.sheets?.['Объём1']||!data.tables)throw new Error('Это не экспорт исходного калькулятора А19');return new EX.Model(data);};
-  const card=(n,label)=>`<div class="excel-stat"><span class="mini-label">${esc(label)}</span><strong>${esc(rub(n))}</strong></div>`;
+  const card=(n,label)=>`<div class="excel-stat"><span class="mini-label">${esc(label)}</span><strong>${esc(rub(n))}</strong><small class="metric-disclaimer">Предварительно · для сверки</small></div>`;
   function cell(sheet,ref,editable=false,style=''){
     const entry=model.data.sheets[sheet]?.[ref],isFormula=!!entry?.f,hasOver=Object.prototype.hasOwnProperty.call(model.overrides,sheet+'!'+ref);
     const val=model.get(sheet,ref);
@@ -72,7 +72,10 @@
   }
   function snapshot(){
     const value=model.get('КП','N29');const fallback=model.get('Объём1','L111');
-    return {total:typeof value==='number'?value:typeof fallback==='number'?fallback:null,checkedAt:new Date().toISOString(),errors:model.detailedAudit().summary.error};
+    const estimate=typeof value==='number'?value:typeof fallback==='number'?fallback:null;
+    const audit=model.detailedAudit();
+    // Never mark the client-facing total as verified while source formulas or references have errors.
+    return {total:null,estimate,verified:false,usage:'testing-only',checkedAt:new Date().toISOString(),errors:audit.summary.error,sourceErrors:audit.errors.filter(e=>e.originalError).length,missingExternal:audit.errors.filter(e=>!e.originalError).length};
   }
   function openOrderId(id){
     pendingOrderId=id;
@@ -121,7 +124,7 @@
     if(!(typeof v==='number'&&Number.isFinite(v))){alert('Итоговая сумма КП содержит ошибку. Сначала проверьте формулы.');return;}
     const o=activeOrderId?window.A19OrderBridge?.getExcel(activeOrderId):null;
     const fieldsList=fields['Объём1'].map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(fmt(model.get('Объём1',x.key)))}</td></tr>`).join('');
-    $('#print-sheet').innerHTML=`<img src="assets/logo.svg" alt="A19"><h1>Предварительный расчёт № ${esc(o?.number||'—')}</h1><p>Клиент: ${esc(o?.customer?.name||'Не указан')}<br>Дата: ${new Date().toLocaleDateString('ru-RU')}</p><h2>Параметры конструкции</h2><table>${fieldsList}</table><div class="print-footer">Расчётная стоимость: ${esc(rub(v))}</div><p style="margin-top:32px">Черновик для внутренней проверки. Исходная модель содержит нерешённые ошибки и отсутствующие справочные данные. Не является утверждённой сметой.</p>`;
+    $('#print-sheet').innerHTML=`<img src="assets/logo.svg" alt="A19"><h1>ТЕСТОВЫЙ РАСЧЁТ № ${esc(o?.number||'—')}</h1><p>Клиент: ${esc(o?.customer?.name||'Не указан')}<br>Дата: ${new Date().toLocaleDateString('ru-RU')}</p><h2>Параметры конструкции</h2><table>${fieldsList}</table><div class="print-footer">Расчётная стоимость: ${esc(rub(v))}</div><p style="margin-top:32px;font-weight:700">НЕ ДЛЯ ОПЛАТЫ И НЕ ДЛЯ КЛИЕНТА. Расчёт в режиме тестирования. Исходная модель содержит нерешённые ошибки и недостающие справочные данные.</p>`;
     window.print();
   }
   function page(){
@@ -130,15 +133,18 @@
     <section class="card excel-hero"><div class="mini-label">ЛОКАЛЬНОЕ РАБОЧЕЕ МЕСТО · 1 МЕНЕДЖЕР</div><h2>Полная модель исходной книги</h2><p>16 листов, 4 115 формул, связанные цены материалов и производственные операции. Для работы загрузите приватный файл <code>A19_excel_model_PRIVATE.json</code>. Он не размещается в публичном GitHub и не передаётся на сервер.</p><button class="primary" data-excel-action="import">Загрузить расчётную модель</button><p class="excel-footnote">Данные хранятся на этом устройстве. Резервную копию следует сохранять отдельно. При смене устройства файл импортируется повторно.</p></section>${persistError?`<p class="excel-error">${esc(persistError)}</p>`:''}`;
     if(activeSheet==='@diag')return diagnosticView();
     const orders=window.A19OrderBridge?.excelOrders()||[];
-    const orderActions=`<section class="card excel-section"><div class="section-title"><h2>Расчёты менеджера</h2><small>${orders.length} сохранено в этом браузере</small></div><div class="excel-order-bar"><select id="excel-order-select"><option value="">Текущий черновик без заказа</option>${orders.map(o=>`<option value="${esc(o.id)}" ${activeOrderId===o.id?'selected':''}>№ ${o.number} · ${esc(o.customer||'Без имени')} · ${esc(rub(o.total))}</option>`).join('')}</select><button class="secondary" data-excel-action="new">Новый расчёт</button><button class="primary" data-excel-action="save-order">${activeOrderId?'Сохранено в заказе':'Сохранить как заказ'}</button></div></section>`;
-    const audit=model.audit();const manualCount=Object.keys(model.overrides).length;const names=model.data.sheetOrder||Object.keys(model.data.sheets);
+    const orderActions=`<section class="card excel-section"><div class="section-title"><h2>Расчёты менеджера</h2><small>${orders.length} сохранено в этом браузере</small></div><div class="excel-order-bar"><select id="excel-order-select"><option value="">Текущий черновик без заказа</option>${orders.map(o=>`<option value="${esc(o.id)}" ${activeOrderId===o.id?'selected':''}>№ ${o.number} · ${esc(o.customer||'Без имени')} · ${esc(rub(o.estimate))} · тестовый</option>`).join('')}</select><button class="secondary" data-excel-action="new">Новый расчёт</button><button class="primary" data-excel-action="save-order">${activeOrderId?'Сохранить изменения':'Сохранить тестовый расчёт'}</button></div></section>`;
+    const report=model.detailedAudit(),audit=report.summary;const manualCount=Object.keys(model.overrides).length;const names=model.data.sheetOrder||Object.keys(model.data.sheets);
+    const sourceCount=report.errors.filter(e=>e.originalError).length;
+    const externalCount=report.errors.length-sourceCount;
+    const testAdvice=`<section class="test-panel" role="status" aria-live="polite"><div class="test-panel-main"><div class="test-panel-icon">!</div><div><div class="test-panel-caption">РЕЖИМ ПРОВЕРКИ · ЦЕНА НЕ УТВЕРЖДЕНА</div><h2>Расчёты доступны для тестирования</h2><p>Меняйте размеры, состав и цены, сохраняйте отдельные заказы и сравнивайте результат с Excel. Сейчас найдено <strong>${audit.error}</strong> проблемных формул: ${sourceCount} из исходной книги и ${externalCount} без внешних данных. Итоги и прибыль показываются <strong>только предварительно</strong>, не для выставления окончательного КП.</p></div></div><div class="test-panel-actions"><button class="secondary" data-excel-action="diagnostics">Разобрать ошибки</button><span class="test-panel-state">${manualCount} ручных корректировок</span></div></section>`;
     const config=sections[activeSheet],stats=config?.stats;
     const statsUI=stats?`<div class="excel-stats">${card(model.get(activeSheet,stats.sale),'Итого по Excel')}${card(model.get(activeSheet,stats.materials),'Материалы / продажа')}${card(model.get(activeSheet,stats.works),'Работы / продажа')}${card(model.get(activeSheet,stats.profit),'Плановая прибыль')}</div>`:'';
     const inputFields=(fields[activeSheet]||[]).map(({key:ref,name})=>`<div class="field"><label>${esc(name)} · ${ref}</label>${cell(activeSheet,ref,true)}</div>`).join('');
     const tabs=config?`<div class="excel-tabs"><button data-excel-action="tab" data-tab="materials" class="${tab==='materials'?'current':''}">Материалы</button><button data-excel-action="tab" data-tab="services" class="${tab==='services'?'current':''}">Производственные операции</button><button data-excel-action="tab" data-tab="all" class="${tab==='all'?'current':''}">Все строки</button></div>`:'';
     const core=config?(tab==='materials'?lineTable(activeSheet,'materials'):tab==='services'?lineTable(activeSheet,'services'):genericTable(activeSheet)):genericTable(activeSheet);
-    return `<div class="page-heading"><div><div class="mini-label">A19 / ФОРМУЛЬНАЯ МОДЕЛЬ · ЛОКАЛЬНО</div><h1>Расчёт рекламной конструкции</h1><p>Материалы, производство, металлокаркас и экономика — в одной расчётной модели.</p></div><div class="toolbar"><button class="secondary" data-excel-action="print">КП для проверки</button><button class="secondary" data-excel-action="diagnostics">Ошибки расчёта</button><button class="secondary" data-excel-action="export">Резервная копия модели</button><button class="secondary" data-excel-action="import">Загрузить другую книгу</button></div></div>
-    <div class="excel-audit"><strong>${audit.ok} из ${audit.formulas} формул вычислены</strong><span>${audit.error} проблемных формул · ${manualCount?manualCount+" ручных корректировок (сравнение с исходным кэшем не применяется)":audit.diff+" числовых расхождений с исходным кэшем"}</span></div>
+    return `<div class="page-heading"><div><div class="mini-label">A19 / ФОРМУЛЬНАЯ МОДЕЛЬ · ЛОКАЛЬНО</div><h1>Расчёт конструкции</h1><p>Материалы, производственные операции, металлокаркас и экономика в одном рабочем пространстве.</p></div><div class="toolbar"><button class="secondary" data-excel-action="print">Распечатать тестовый расчёт</button><button class="secondary" data-excel-action="diagnostics">Ошибки расчёта</button><button class="secondary" data-excel-action="export">Резервная копия модели</button><button class="secondary" data-excel-action="import">Загрузить другую книгу</button></div></div>
+    <div class="excel-audit"><strong>${audit.ok} / ${audit.formulas} формул вычислены</strong><span>${audit.error} требуют проверки · ${manualCount?manualCount+" ручных правок":audit.diff+" расхождений с исходным кэшем"}</span></div>${testAdvice}
     ${persistError?`<div class="warning">${esc(persistError)}</div>`:''}
     <section class="card excel-section"><div class="section-title"><h2>Раздел расчёта</h2><small>${esc(activeSheet)}</small></div><div class="field"><label>Лист исходного Excel</label><select id="excel-sheet">${names.map(n=>`<option value="${esc(n)}" ${n===activeSheet?'selected':''}>${esc(titles[n]||n)}</option>`).join('')}</select></div></section>
     ${orderActions}

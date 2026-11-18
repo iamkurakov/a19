@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#f8f8f6" />
-  <meta name="description" content="А19 — рабочий прототип калькулятора рекламных конструкций" />
+  <meta name="theme-color" content="#F5F5F2" />
+  <meta name="description" content="А19 — расчёт рекламных конструкций. Рабочее место для тестирования формульной модели." />
   <title>А19 / Калькулятор конструкций</title>
   <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="assets/styles.css" />
@@ -12,7 +12,7 @@
 <body>
   <div class="site-shell">
     <aside class="sidebar" aria-label="Основное меню">
-      <div class="brand"><img src="assets/logo.svg" alt="А19" /><span>РАСЧЁТ КОНСТРУКЦИЙ</span></div>
+      <div class="brand"><img src="assets/logo.svg" alt="А19" /><span>РАСЧЁТ РЕКЛАМНЫХ КОНСТРУКЦИЙ</span></div>
       <div class="sidebar-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
       <nav>
         <button class="nav-item active" data-view="excel"><span class="nav-index">01</span> Расчёт конструкции</button>
@@ -25,12 +25,12 @@
     </aside>
     <div class="workspace">
       <header class="topbar">
-        <span class="eyebrow">A19 / PRODUCTION WORKSPACE</span>
+        <span class="eyebrow">A19 <i class="top-separator"></i> КАЛЬКУЛЯТОР РЕКЛАМНЫХ КОНСТРУКЦИЙ</span>
         <div class="top-actions"><button class="text-btn" data-action="export">Скачать резервную копию</button><button class="text-btn" data-action="import">Загрузить данные</button></div>
       </header>
-      <div class="warning"><strong>Один менеджер · без входа.</strong> Рабочие расчёты и заказы сохраняются локально. Сохраняйте полную резервную копию перед закрытием проекта или сменой устройства. До устранения ошибок исходного Excel КП доступны как предварительные, без утверждения цены.</div>
+      <div class="warning"><strong>Тестовый режим.</strong> Один менеджер, без входа. Данные пока сохраняются только в этом браузере. До сверки формул все цены предварительные. Скачивайте полную резервную копию после работы.</div>
       <main id="app" tabindex="-1"></main>
-      <footer class="footer"><span>А19 · Расчёт рекламных конструкций</span><span>Версия 0.3 / Аудит и заказы</span></footer>
+      <footer class="footer"><span>А19 · Расчёт рекламных конструкций</span><span>Версия 0.4 / Проверка расчётов</span></footer>
     </div>
   </div>
   <input id="excel-model-input" type="file" accept="application/json,.json" hidden />
