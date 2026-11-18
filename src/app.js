@@ -12,7 +12,7 @@
   const blank = () => ({schema:1,orders:[],catalog:[]});
   const storage = () => {try { const s=JSON.parse(localStorage.getItem(STORAGE)); return s&&s.schema===1&&Array.isArray(s.orders)&&Array.isArray(s.catalog)?s:blank(); }catch(e){return blank();}};
   let db = storage();
-  let view = 'orders';
+  let view = 'excel';
   let selected = null;
   const persist = () => { try {localStorage.setItem(STORAGE, JSON.stringify(db));} catch(e){alert('Не удалось сохранить данные в браузере. Скачайте резервную копию и освободите место.');} };
   const save = () => {persist();render();};
@@ -106,7 +106,7 @@
   function render(){
     document.querySelectorAll('[data-view].nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===view));
     const o=selected&&byId(selected);
-    $('#app').innerHTML=view==='catalog'?catalogView():view==='about'?aboutView():o?orderView(o):ordersView();
+    $('#app').innerHTML=view==='excel'?window.A19ExcelUI.render():view==='catalog'?catalogView():view==='about'?aboutView():o?orderView(o):ordersView();
   }
   function updateField(el){
     const scope=el.dataset.scope,path=el.dataset.edit;

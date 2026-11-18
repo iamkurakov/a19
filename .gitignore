@@ -11,3 +11,9 @@ __pycache__/
 .DS_Store
 *.xlsx
 backup-*.json
+
+# Proprietary Excel input and private extracted formulas/prices
+*.xlsx
+A19_excel_model_PRIVATE.json
+*_PRIVATE.json
+data-private/
